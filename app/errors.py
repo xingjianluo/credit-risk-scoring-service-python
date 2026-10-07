@@ -9,6 +9,8 @@ class ErrorKind(str, Enum):
     MISSING_FEATURE = "MISSING_FEATURE"
     INVALID_FEATURE_TYPE = "INVALID_FEATURE_TYPE"
     FEATURE_OUT_OF_RANGE = "FEATURE_OUT_OF_RANGE"
+    # 非法输入（如 NaN / Infinity 等非有限数值），不得当成正常低分放过
+    INVALID_INPUT = "INVALID_INPUT"
     # 模型类
     UNKNOWN_MODEL_VERSION = "UNKNOWN_MODEL_VERSION"
     # 并发类

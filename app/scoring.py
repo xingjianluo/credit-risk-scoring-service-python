@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 from app.model_registry import FEATURE_SPECS, latest_version, score_features
 from app.models import (
@@ -68,6 +69,16 @@ def validate_features(features: dict) -> list[RejectReason]:
             )
             continue
         numeric = float(value)
+        # NaN / +Inf / -Inf 必须单独识别，绝不能进入打分被当成正常低分悄悄放过
+        if not math.isfinite(numeric):
+            reasons.append(
+                RejectReason(
+                    RejectReasonCode.NON_FINITE_NUMERIC,
+                    spec.name,
+                    f"非有限数值: {value!r} 不是合法的有限数值",
+                )
+            )
+            continue
         if (spec.minimum is not None and numeric < spec.minimum) or (
             spec.maximum is not None and numeric > spec.maximum
         ):
@@ -79,6 +90,18 @@ def validate_features(features: dict) -> list[RejectReason]:
                 )
             )
     return reasons
+
+
+def find_non_finite_features(features: dict) -> list[str]:
+    """返回取值为非有限数值（NaN/Infinity）的数值型特征名，供服务层提前归一化为 INVALID_INPUT。"""
+    bad: list[str] = []
+    for spec in FEATURE_SPECS:
+        value = features.get(spec.name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if not math.isfinite(float(value)):
+            bad.append(spec.name)
+    return bad
 
 
 def categorize(score: int) -> ScoreCategory:

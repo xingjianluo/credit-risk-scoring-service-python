@@ -16,6 +16,7 @@ _STATUS_BY_KIND = {
     ErrorKind.MISSING_FEATURE: 422,
     ErrorKind.INVALID_FEATURE_TYPE: 422,
     ErrorKind.FEATURE_OUT_OF_RANGE: 422,
+    ErrorKind.INVALID_INPUT: 422,
     ErrorKind.UNKNOWN_MODEL_VERSION: 400,
     ErrorKind.CONCURRENT_CONFLICT: 409,
     ErrorKind.UPSTREAM_FAILURE: 502,
@@ -66,19 +67,69 @@ def submit(req: ApplicationRequest) -> dict:
     record = service.submit_application(
         req.application_id, req.customer_id, req.features, req.model_version
     )
+    return _application_payload(record)
+
+
+def _application_payload(record) -> dict:
     r = record.result
     return {
         "application_id": record.application_id,
+        "customer_id": record.customer_id,
         "risk_record_id": record.risk_record_id,
         "model_version": r.model_version,
+        "link_policy_version": record.link_policy_version,
         "score": r.score,
         "category": r.category.value,
         "decision": r.decision.value,
+        # 联动收紧前的原始打分判定，便于对比“被收紧到了什么程度”
+        "base_score": record.base_result.score if record.base_result else None,
+        "base_decision": (
+            record.base_result.decision.value if record.base_result else None
+        ),
         "reasons": [
             {"code": x.code.value, "feature": x.feature, "detail": x.detail} for x in r.reasons
         ],
         "feature_snapshot_hash": r.feature_snapshot_hash,
+        # 本次决策关联了哪些告警，以及每条告警的联动影响
+        "linked_alerts": [
+            {
+                "alert_id": impact.alert_id,
+                "kind": impact.kind.value,
+                "severity": impact.severity,
+                "score_penalty": impact.score_penalty,
+                "ladder_steps": impact.ladder_steps,
+                "detail": impact.detail,
+            }
+            for impact in record.linked_impacts
+        ],
     }
+
+
+@app.get("/applications/{application_id}")
+def application_detail(application_id: str) -> dict:
+    """正向追溯：一次申请关联了哪些告警（返回决策当时固定的结论与关联）。"""
+    record = service.get_application_detail(application_id)
+    payload = _application_payload(record)
+    payload["alert_ids"] = list(record.alert_ids)
+    return payload
+
+
+@app.get("/alerts/{alert_id}/decision")
+def alert_decision(alert_id: str) -> dict:
+    """反向追溯：一条告警关联到了哪一次决策。"""
+    alert = service.get_alert_link(alert_id)
+    payload = {
+        "alert_id": alert.alert_id,
+        "customer_id": alert.customer_id,
+        "kind": alert.kind.value,
+        "status": alert.status.value,
+        "linked_application_id": alert.linked_application_id,
+    }
+    if alert.linked_application_id is not None:
+        record = service.get_application_detail(alert.linked_application_id)
+        payload["decision"] = record.result.decision.value
+        payload["risk_record_id"] = record.risk_record_id
+    return payload
 
 
 @app.get("/applications/{application_id}/replay")

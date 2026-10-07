@@ -70,5 +70,5 @@ def score_features(model_version: str, features: dict) -> tuple[int, tuple[str, 
         contribution = weight * (float(features[name]) - baseline)
         total += contribution
         fired.append(f"{name}:{'+' if contribution >= 0 else ''}{contribution:.2f}")
-    score = int(round(min(_SCORE_MAX, max(_SCORE_MIN, total))))
-    return score, tuple(fired)
+    score = round(min(_SCORE_MAX, max(_SCORE_MIN, total)))
+    return int(score), tuple(fired)
