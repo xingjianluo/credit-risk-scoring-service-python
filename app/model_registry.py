@@ -41,7 +41,7 @@ _MODELS: dict[str, dict[str, tuple[float, float]]] = {
     "v2": _V2_WEIGHTS,
 }
 
-_SCORE_MIN, _SCORE_MAX = 300, 900
+SCORE_MIN, SCORE_MAX = 300, 900
 
 
 def available_versions() -> list[str]:
@@ -70,5 +70,5 @@ def score_features(model_version: str, features: dict) -> tuple[int, tuple[str, 
         contribution = weight * (float(features[name]) - baseline)
         total += contribution
         fired.append(f"{name}:{'+' if contribution >= 0 else ''}{contribution:.2f}")
-    score = int(round(min(_SCORE_MAX, max(_SCORE_MIN, total))))
+    score = int(round(min(SCORE_MAX, max(SCORE_MIN, total))))
     return score, tuple(fired)

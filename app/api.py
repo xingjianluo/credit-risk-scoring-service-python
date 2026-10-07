@@ -1,6 +1,8 @@
 """FastAPI 对外接口：统一错误归一化为 HTTP 响应，底层异常不透出。"""
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -8,6 +10,15 @@ from pydantic import BaseModel
 from app.errors import ErrorKind, RiskServiceError
 from app.models import Transaction
 from app.service import RiskService
+
+# 保证本地直接以 uvicorn 启动时，risk.service 的联动/归一化日志（申请标识、
+# 模型版本、判定理由、所用告警）默认可见；已有 handler（如测试/pytest caplog）则不重复挂载
+_risk_logger = logging.getLogger("risk.service")
+if not _risk_logger.handlers and not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 app = FastAPI(title="credit-risk-scoring-service")
 service = RiskService()
@@ -78,6 +89,52 @@ def submit(req: ApplicationRequest) -> dict:
             {"code": x.code.value, "feature": x.feature, "detail": x.detail} for x in r.reasons
         ],
         "feature_snapshot_hash": r.feature_snapshot_hash,
+        "linked_alerts": [
+            {
+                "alert_id": link.alert_id,
+                "kind": link.kind.value,
+                "tx_ids": list(link.tx_ids),
+                "score_penalty": link.score_penalty,
+                "decision_floor": link.decision_floor.value,
+                "detail": link.reason_detail,
+            }
+            for link in record.alert_links
+        ],
+    }
+
+
+@app.get("/applications/{application_id}/alerts")
+def application_alerts(application_id: str) -> dict:
+    alerts = service.get_application_alerts(application_id)
+    return {
+        "application_id": application_id,
+        "alerts": [
+            {
+                "alert_id": a.alert_id,
+                "kind": a.kind.value,
+                "status": a.status.value,
+                "linked_application_id": a.linked_application_id,
+                "tx_ids": list(a.tx_ids),
+            }
+            for a in alerts
+        ],
+    }
+
+
+@app.get("/alerts/{alert_id}/decision")
+def alert_decision(alert_id: str) -> dict:
+    record = service.get_alert_linked_application(alert_id)
+    if record is None:
+        return {"alert_id": alert_id, "linked": False}
+    r = record.result
+    return {
+        "alert_id": alert_id,
+        "linked": True,
+        "application_id": record.application_id,
+        "risk_record_id": record.risk_record_id,
+        "model_version": r.model_version,
+        "score": r.score,
+        "decision": r.decision.value,
     }
 
 

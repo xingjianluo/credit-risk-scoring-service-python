@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 from app.model_registry import FEATURE_SPECS, latest_version, score_features
 from app.models import (
@@ -58,6 +59,26 @@ def validate_features(features: dict) -> list[RejectReason]:
                 )
             continue
         value = features[spec.name]
+        # bool 业务上不接受；非有限数值（nan/inf/-inf，通常是 float）单独识别，
+        # 优先于类型与越界检查，避免被当成普通低分或漏过比较
+        if isinstance(value, bool):
+            reasons.append(
+                RejectReason(
+                    RejectReasonCode.INVALID_FEATURE_TYPE,
+                    spec.name,
+                    "类型异常: 布尔值不得充当数值",
+                )
+            )
+            continue
+        if isinstance(value, float) and not math.isfinite(value):
+            reasons.append(
+                RejectReason(
+                    RejectReasonCode.NON_FINITE_VALUE,
+                    spec.name,
+                    f"非有限数值: {value!r} 不是合法的有限数值",
+                )
+            )
+            continue
         if not _is_type_ok(value, spec.dtype):
             reasons.append(
                 RejectReason(

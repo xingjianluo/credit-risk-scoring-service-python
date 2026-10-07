@@ -147,7 +147,7 @@ def test_persistence_failure_normalized(service, caplog):
     caplog.set_level(logging.ERROR, logger="risk.service")
 
     class BrokenRepo(Repository):
-        def save_application_if_absent(self, record):
+        def create_application_with_alerts(self, application_id, customer_id, features, build_record):
             raise RuntimeError("disk full: /var/lib/db/seg-07")  # 底层细节
 
     svc = RiskService(BrokenRepo())

@@ -22,7 +22,9 @@ class RejectReasonCode(str, Enum):
     MISSING_FEATURE = "MISSING_FEATURE"
     INVALID_FEATURE_TYPE = "INVALID_FEATURE_TYPE"
     FEATURE_OUT_OF_RANGE = "FEATURE_OUT_OF_RANGE"
+    NON_FINITE_VALUE = "NON_FINITE_VALUE"
     LOW_SCORE = "LOW_SCORE"
+    ALERT_LINKAGE = "ALERT_LINKAGE"
 
 
 class AlertKind(str, Enum):
@@ -75,6 +77,24 @@ class Transaction:
     merchant: str
 
 
+@dataclass(frozen=True)
+class AlertLink:
+    """一条告警被某次决策采用时的冻结快照：联动规则的依据与影响程度都固定下来。
+
+    历史申请重放时只依赖该快照，不回读当前告警状态或最新联动策略，
+    因此后续策略升级、告警状态变化都不会让历史结论漂移。
+    """
+
+    alert_id: str
+    kind: AlertKind
+    tx_ids: tuple[str, ...]
+    window_start: float
+    window_end: float
+    score_penalty: int
+    decision_floor: Decision
+    reason_detail: str
+
+
 @dataclass
 class Alert:
     alert_id: str
@@ -84,6 +104,7 @@ class Alert:
     window_start: float
     window_end: float
     status: AlertStatus = AlertStatus.OPEN
+    linked_application_id: str | None = None
 
 
 @dataclass
@@ -96,3 +117,4 @@ class ApplicationRecord:
     risk_record_id: str
     features: dict = field(default_factory=dict)  # 原始特征快照，用于按原版本重放
     alert_ids: list[str] = field(default_factory=list)
+    alert_links: tuple[AlertLink, ...] = ()  # 决策时冻结的联动快照（历史不可变）
